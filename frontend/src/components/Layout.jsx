@@ -10,7 +10,13 @@ import {
   LogOut,
   Bot,
   Menu,
-  X
+  X,
+  Kanban,
+  CalendarDays,
+  Gift,
+  FileBarChart,
+  Settings,
+  Bell
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -19,8 +25,12 @@ const navItems = [
   { path: '/jobs', label: 'Jobs', icon: Briefcase },
   { path: '/candidates', label: 'Candidates', icon: Users },
   { path: '/applications', label: 'Applications', icon: FileText },
+  { path: '/pipeline', label: 'Pipeline', icon: Kanban },
   { path: '/interviews', label: 'Interviews', icon: Calendar },
+  { path: '/calendar', label: 'Calendar', icon: CalendarDays },
+  { path: '/offers', label: 'Offers', icon: Gift },
   { path: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { path: '/reports', label: 'Reports', icon: FileBarChart },
 ];
 
 export default function Layout() {
@@ -81,6 +91,18 @@ export default function Layout() {
 
           {/* User */}
           <div className="p-4 border-t border-gray-200">
+            <NavLink
+              to="/settings"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors mb-3 ${
+                  isActive ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                }`
+              }
+              onClick={() => setSidebarOpen(false)}
+            >
+              <Settings className="w-5 h-5" />
+              Settings
+            </NavLink>
             <div className="flex items-center gap-3">
               <div className="flex items-center justify-center w-9 h-9 bg-primary-100 text-primary-700 rounded-full text-sm font-semibold">
                 {user?.firstName?.[0]}{user?.lastName?.[0]}

@@ -11,6 +11,11 @@ import Applications from './pages/Applications';
 import ApplicationDetail from './pages/ApplicationDetail';
 import Interviews from './pages/Interviews';
 import Analytics from './pages/Analytics';
+import Pipeline from './pages/Pipeline';
+import CalendarView from './pages/CalendarView';
+import Offers from './pages/Offers';
+import Reports from './pages/Reports';
+import Settings from './pages/Settings';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -33,8 +38,13 @@ export default function App() {
             <Route path="candidates/:id" element={<CandidateDetail />} />
             <Route path="applications" element={<Applications />} />
             <Route path="applications/:id" element={<ApplicationDetail />} />
+            <Route path="pipeline" element={<Pipeline />} />
             <Route path="interviews" element={<Interviews />} />
+            <Route path="calendar" element={<CalendarView />} />
+            <Route path="offers" element={<Offers />} />
             <Route path="analytics" element={<Analytics />} />
+            <Route path="reports" element={<Reports />} />
+            <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>
       </AuthProvider>
