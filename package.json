@@ -1,0 +1,17 @@
+{
+  "name": "ats-platform",
+  "version": "1.0.0",
+  "description": "High-Performance HR Application Tracking System powered by Claude AI",
+  "private": true,
+  "scripts": {
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "build": "cd frontend && npm run build",
+    "start": "cd backend && npm start",
+    "setup": "npm install && cd backend && npm install && cd ../frontend && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

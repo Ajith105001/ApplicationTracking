@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - DB_DIALECT=postgres
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=ats_db
+      - DB_USER=postgres
+      - DB_PASSWORD=ats_secure_password
+      - JWT_SECRET=${JWT_SECRET:-change-this-in-production}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - FRONTEND_URL=http://localhost:3001
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ats_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ats_secure_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
