@@ -32,9 +32,13 @@ export default function Analytics() {
       .then(([d, f]) => {
         setDashboard(d);
         setFunnel(f.funnel);
+        // Auto-load AI insights
+        setInsightsLoading(true);
+        return api.getAiInsights();
       })
+      .then(data => setInsights(data.insights))
       .catch(console.error)
-      .finally(() => setLoading(false));
+      .finally(() => { setLoading(false); setInsightsLoading(false); });
   }, []);
 
   const loadInsights = async () => {

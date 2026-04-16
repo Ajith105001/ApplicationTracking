@@ -16,11 +16,18 @@ router.get('/', authenticate, async (req, res) => {
     if (status) where.status = status;
     if (jobId) where.jobId = jobId;
 
+    // Hiring managers only see applications for their own jobs
+    const jobInclude = { model: Job, attributes: ['id', 'title', 'department', 'location'] };
+    if (req.user.role === 'hiring_manager') {
+      jobInclude.where = { hiringManagerId: req.user.id };
+      jobInclude.required = true; // INNER JOIN filters out other jobs' applications
+    }
+
     const offset = (parseInt(page) - 1) * parseInt(limit);
     const { rows: applications, count: total } = await Application.findAndCountAll({
       where,
       include: [
-        { model: Job, attributes: ['id', 'title', 'department', 'location'] },
+        jobInclude,
         { model: Candidate, attributes: ['id', 'firstName', 'lastName', 'email', 'currentTitle', 'currentCompany'] },
         { model: Interview },
       ],
@@ -82,6 +89,24 @@ router.post('/',
       // Update application count
       await job.update({ applicationCount: job.applicationCount + 1 });
 
+      // Auto AI screen if candidate has resume text
+      if (candidate.resumeText || candidate.skills) {
+        try {
+          const result = await claudeService.screenResume(
+            candidate.resumeText || `${candidate.firstName} ${candidate.lastName} - ${candidate.currentTitle} at ${candidate.currentCompany}. Skills: ${(typeof candidate.skills === 'string' ? JSON.parse(candidate.skills) : candidate.skills || []).join(', ')}`,
+            job.description || job.title,
+            job.requirements || ''
+          );
+          await application.update({
+            status: 'screening',
+            aiScore: result.score,
+            aiAnalysis: { score: result.score, summary: result.summary, recommendation: result.recommendation },
+            aiStrengths: result.strengths || [],
+            aiWeaknesses: result.weaknesses || [],
+          });
+        } catch { /* non-blocking */ }
+      }
+
       res.status(201).json({ application });
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -122,14 +147,52 @@ router.post('/:id/ai-screen', authenticate, async (req, res) => {
       application.Job.requirements
     );
 
+    // Move status to screening (or keep existing stage if already further in pipeline)
+    const TERMINAL = ['hired', 'rejected', 'withdrawn'];
+    const ADVANCED = ['shortlisted', 'interview', 'technical', 'offer'];
+    const shouldAdvance = !TERMINAL.includes(application.status) && !ADVANCED.includes(application.status);
     await application.update({
+      ...(shouldAdvance ? { status: 'screening' } : {}),
       aiScore: result.score,
-      aiAnalysis: result,
-      aiStrengths: result.strengths,
-      aiWeaknesses: result.weaknesses,
+      aiAnalysis: { score: result.score, summary: result.summary, recommendation: result.recommendation },
+      aiStrengths: result.strengths || [],
+      aiWeaknesses: result.weaknesses || [],
     });
 
-    res.json({ screening: result, application });
+    // Reload with associations for complete response
+    const updated = await Application.findByPk(application.id, {
+      include: [{ model: Job }, { model: Candidate }],
+    });
+    res.json({ screening: result, application: updated });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/applications/:id/generate-remarks
+router.post('/:id/generate-remarks', authenticate, async (req, res) => {
+  try {
+    const application = await Application.findByPk(req.params.id, {
+      include: [{ model: Job }, { model: Candidate }],
+    });
+    if (!application) return res.status(404).json({ error: 'Application not found' });
+
+    const analysis = application.aiAnalysis || {};
+    const context = {
+      candidateName: `${application.Candidate.firstName} ${application.Candidate.lastName}`,
+      jobTitle: application.Job.title,
+      jobDepartment: application.Job.department,
+      status: application.status,
+      aiScore: application.aiScore,
+      aiStrengths: application.aiStrengths || [],
+      aiWeaknesses: application.aiWeaknesses || [],
+      aiSummary: analysis.summary || '',
+      aiRecommendation: analysis.recommendation || '',
+      recruiterNotes: application.recruiterNotes || '',
+    };
+
+    const result = await claudeService.generateRemarks(context);
+    res.json({ remarks: result.remarks });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -139,16 +202,33 @@ router.post('/:id/ai-screen', authenticate, async (req, res) => {
 router.post('/:id/generate-email', authenticate, async (req, res) => {
   try {
     const application = await Application.findByPk(req.params.id, {
-      include: [{ model: Job }, { model: Candidate }],
+      include: [{ model: Job }, { model: Candidate }, { model: Interview }],
     });
     if (!application) return res.status(404).json({ error: 'Application not found' });
 
-    const email = await claudeService.generateEmail(
-      req.body.type || 'rejection',
-      `${application.Candidate.firstName} ${application.Candidate.lastName}`,
-      application.Job.title,
-      req.body.context
-    );
+    const candidate = application.Candidate;
+    const job = application.Job;
+
+    // Build rich context so AI (or mock) can personalize the email
+    const richContext = {
+      candidateName: `${candidate.firstName} ${candidate.lastName}`,
+      candidateEmail: candidate.email,
+      candidateTitle: candidate.currentTitle || '',
+      candidateCompany: candidate.currentCompany || '',
+      jobTitle: job.title,
+      jobDepartment: job.department,
+      jobLocation: job.location,
+      applicationStatus: application.status,
+      aiScore: application.aiScore || null,
+      aiStrengths: application.aiStrengths || [],
+      aiWeaknesses: application.aiWeaknesses || [],
+      aiRecommendation: application.aiAnalysis?.recommendation || '',
+      upcomingInterview: application.Interviews?.find(i => i.status === 'scheduled') || null,
+      recruiterNotes: application.recruiterNotes || '',
+      extraContext: req.body.context || '',
+    };
+
+    const email = await claudeService.generateEmail(req.body.type || 'rejection', richContext);
 
     res.json({ email });
   } catch (error) {

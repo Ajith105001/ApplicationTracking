@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../api';
 import {
   Download, FileText, BarChart3, TrendingUp, Calendar,
-  Users, Briefcase, Filter, Table, PieChart, Bot, Sparkles
+  Users, Briefcase, CheckCircle2, XCircle, Bot, Clock
 } from 'lucide-react';
 
 export default function Reports() {
@@ -12,12 +12,16 @@ export default function Reports() {
   const [reportType, setReportType] = useState('overview');
   const [dateRange, setDateRange] = useState('30');
 
-  useEffect(() => {
-    Promise.all([api.getDashboard(), api.getHiringFunnel()])
+  const fetchData = () => {
+    setLoading(true);
+    const params = dateRange !== 'all' ? { days: dateRange } : {};
+    Promise.all([api.getDashboard(params), api.getHiringFunnel()])
       .then(([d, f]) => { setDashboard(d); setFunnel(f.funnel); })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { fetchData(); }, [dateRange]);
 
   const exportCSV = (data, filename) => {
     if (!data || data.length === 0) return;
@@ -76,7 +80,6 @@ export default function Reports() {
         </button>
       </div>
 
-      {/* Report type selector */}
       <div className="flex flex-wrap gap-2">
         {[
           { id: 'overview', label: 'Overview', icon: BarChart3 },
@@ -95,6 +98,12 @@ export default function Reports() {
             {label}
           </button>
         ))}
+        <select className="input w-auto text-sm ml-auto" value={dateRange} onChange={e => setDateRange(e.target.value)}>
+          <option value="30">Last 30 days</option>
+          <option value="60">Last 60 days</option>
+          <option value="90">Last 90 days</option>
+          <option value="all">All time</option>
+        </select>
       </div>
 
       {/* Report content */}
@@ -103,17 +112,17 @@ export default function Reports() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="card text-center">
               <p className="text-sm text-gray-500">Total Jobs</p>
-              <p className="text-3xl font-bold text-gray-900 mt-1">{o.totalJobs}</p>
-              <p className="text-xs text-green-600 mt-1">{o.activeJobs} active</p>
+              <p className="text-3xl font-bold text-gray-900 mt-1">{o.totalJobs ?? 0}</p>
+              <p className="text-xs text-green-600 mt-1">{o.activeJobs ?? 0} active</p>
             </div>
             <div className="card text-center">
               <p className="text-sm text-gray-500">Applications</p>
-              <p className="text-3xl font-bold text-gray-900 mt-1">{o.totalApplications}</p>
-              <p className="text-xs text-amber-600 mt-1">{o.pendingReview} pending</p>
+              <p className="text-3xl font-bold text-gray-900 mt-1">{o.totalApplications ?? 0}</p>
+              <p className="text-xs text-amber-600 mt-1">{o.pendingReview ?? 0} pending</p>
             </div>
             <div className="card text-center">
               <p className="text-sm text-gray-500">Hired</p>
-              <p className="text-3xl font-bold text-green-600 mt-1">{o.hired}</p>
+              <p className="text-3xl font-bold text-green-600 mt-1">{o.hired ?? 0}</p>
               <p className="text-xs text-gray-500 mt-1">{o.totalApplications ? ((o.hired / o.totalApplications) * 100).toFixed(1) : 0}% rate</p>
             </div>
             <div className="card text-center">
@@ -123,42 +132,33 @@ export default function Reports() {
             </div>
           </div>
 
-          {/* Detailed table */}
-          <div className="card overflow-hidden">
+          {/* Metrics grid — no table */}
+          <div className="card">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Table className="w-5 h-5 text-primary-600" /> Recruitment Summary
+              <BarChart3 className="w-5 h-5 text-primary-600" /> Recruitment Summary
             </h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Metric</th>
-                    <th className="text-right py-3 px-4 font-semibold text-gray-700">Count</th>
-                    <th className="text-right py-3 px-4 font-semibold text-gray-700">% of Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[
-                    { metric: 'Total Jobs', count: o.totalJobs },
-                    { metric: 'Active Jobs', count: o.activeJobs },
-                    { metric: 'Total Candidates', count: o.totalCandidates },
-                    { metric: 'Total Applications', count: o.totalApplications },
-                    { metric: 'Pending Review', count: o.pendingReview },
-                    { metric: 'In Interview', count: o.inInterview },
-                    { metric: 'Hired', count: o.hired },
-                    { metric: 'Rejected', count: o.rejected },
-                    { metric: 'Upcoming Interviews', count: o.upcomingInterviews },
-                  ].map(({ metric, count }) => (
-                    <tr key={metric} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="py-3 px-4 text-gray-900">{metric}</td>
-                      <td className="py-3 px-4 text-right font-medium text-gray-900">{count || 0}</td>
-                      <td className="py-3 px-4 text-right text-gray-500">
-                        {o.totalApplications ? ((count / o.totalApplications) * 100).toFixed(1) : '-'}%
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {[
+                { label: 'Total Jobs', count: o.totalJobs, icon: Briefcase, color: 'text-blue-600 bg-blue-50' },
+                { label: 'Active Jobs', count: o.activeJobs, icon: Briefcase, color: 'text-green-600 bg-green-50' },
+                { label: 'Total Candidates', count: o.totalCandidates, icon: Users, color: 'text-indigo-600 bg-indigo-50' },
+                { label: 'Total Applications', count: o.totalApplications, icon: FileText, color: 'text-primary-600 bg-primary-50' },
+                { label: 'Pending Review', count: o.pendingReview, icon: Clock, color: 'text-amber-600 bg-amber-50' },
+                { label: 'In Interview', count: o.inInterview, icon: Users, color: 'text-purple-600 bg-purple-50' },
+                { label: 'Hired', count: o.hired, icon: CheckCircle2, color: 'text-green-600 bg-green-50' },
+                { label: 'Rejected', count: o.rejected, icon: XCircle, color: 'text-red-600 bg-red-50' },
+                { label: 'Upcoming Interviews', count: o.upcomingInterviews, icon: Calendar, color: 'text-cyan-600 bg-cyan-50' },
+              ].map(({ label, count, icon: Icon, color }) => (
+                <div key={label} className="bg-gray-50 rounded-xl p-4 flex items-center gap-4 hover:shadow-sm transition-shadow">
+                  <div className={`p-2.5 rounded-lg ${color}`}>
+                    <Icon className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-gray-900">{count ?? 0}</p>
+                    <p className="text-xs text-gray-500">{label}</p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -166,77 +166,62 @@ export default function Reports() {
 
       {reportType === 'funnel' && funnel && (
         <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-primary-600" /> Hiring Funnel Report
           </h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Stage</th>
-                  <th className="text-right py-3 px-4 font-semibold text-gray-700">Count</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Visual</th>
-                  <th className="text-right py-3 px-4 font-semibold text-gray-700">Conversion</th>
-                </tr>
-              </thead>
-              <tbody>
-                {funnel.map((stage, i) => {
-                  const maxCount = Math.max(...funnel.map(f => f.count), 1);
-                  const prevCount = i > 0 ? funnel[i - 1].count : stage.count;
-                  const conversion = prevCount > 0 ? ((stage.count / prevCount) * 100).toFixed(1) : '-';
-                  return (
-                    <tr key={stage.stage} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="py-3 px-4 capitalize font-medium text-gray-900">{stage.stage}</td>
-                      <td className="py-3 px-4 text-right font-bold text-gray-900">{stage.count}</td>
-                      <td className="py-3 px-4">
-                        <div className="bg-gray-100 rounded-full h-4 w-48">
-                          <div className="bg-primary-500 h-4 rounded-full transition-all" style={{ width: `${(stage.count / maxCount) * 100}%` }} />
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-right text-gray-500">{conversion}%</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="space-y-3">
+            {funnel.map((stage, i) => {
+              const maxCount = Math.max(...funnel.map(f => f.count), 1);
+              const prevCount = i > 0 ? funnel[i - 1].count : stage.count;
+              const conversion = prevCount > 0 ? ((stage.count / prevCount) * 100).toFixed(1) : '100';
+              return (
+                <div key={stage.stage}>
+                  <div className="flex items-center justify-between text-sm mb-1.5">
+                    <span className="capitalize font-medium text-gray-700 w-28">{stage.stage}</span>
+                    <div className="flex items-center gap-4">
+                      <span className="font-bold text-gray-900 w-8 text-right">{stage.count}</span>
+                      <span className="text-xs text-gray-400 w-20 text-right">{conversion}% conv.</span>
+                    </div>
+                  </div>
+                  <div className="h-9 bg-gray-100 rounded-xl overflow-hidden">
+                    <div
+                      className="h-9 bg-primary-500 rounded-xl flex items-center justify-end pr-3 transition-all duration-500"
+                      style={{ width: `${Math.max((stage.count / maxCount) * 100, stage.count > 0 ? 6 : 0)}%` }}
+                    >
+                      {stage.count > 0 && <span className="text-white text-xs font-bold">{stage.count}</span>}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
 
       {reportType === 'sources' && dashboard?.sourceBreakdown && (
         <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
             <Users className="w-5 h-5 text-primary-600" /> Candidate Source Report
           </h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Source</th>
-                  <th className="text-right py-3 px-4 font-semibold text-gray-700">Candidates</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Distribution</th>
-                  <th className="text-right py-3 px-4 font-semibold text-gray-700">%</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dashboard.sourceBreakdown.map(({ source, count }) => {
-                  const total = o.totalCandidates || 1;
-                  const pct = ((count / total) * 100).toFixed(1);
-                  return (
-                    <tr key={source} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="py-3 px-4 capitalize font-medium text-gray-900">{source?.replace('-', ' ')}</td>
-                      <td className="py-3 px-4 text-right font-bold text-gray-900">{count}</td>
-                      <td className="py-3 px-4">
-                        <div className="bg-gray-100 rounded-full h-4 w-48">
-                          <div className="bg-primary-500 h-4 rounded-full" style={{ width: `${pct}%` }} />
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-right text-gray-500">{pct}%</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="grid md:grid-cols-2 gap-4">
+            {dashboard.sourceBreakdown.map(({ source, count }) => {
+              const total = o.totalCandidates || 1;
+              const pct = ((count / total) * 100).toFixed(1);
+              return (
+                <div key={source} className="bg-gray-50 rounded-xl p-5 hover:shadow-sm transition-shadow">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="font-medium text-gray-700 capitalize">{source?.replace('-', ' ')}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl font-bold text-gray-900">{count}</span>
+                      <span className="badge bg-primary-50 text-primary-700">{pct}%</span>
+                    </div>
+                  </div>
+                  <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="h-2.5 bg-primary-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

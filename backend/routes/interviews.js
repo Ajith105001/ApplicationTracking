@@ -77,8 +77,9 @@ router.post('/',
         scheduledBy: req.user.id,
       });
 
-      // Update application status
-      if (application.status === 'shortlisted' || application.status === 'screening') {
+      // Update application status to interview (unless already at interview stage or beyond)
+      const TERMINAL_STATUSES = ['interview', 'technical', 'offer', 'hired', 'rejected', 'withdrawn'];
+      if (!TERMINAL_STATUSES.includes(application.status)) {
         await application.update({ status: 'interview' });
       }
 

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../api';
 import {
   FileText, DollarSign, Calendar, Send, CheckCircle2, XCircle,
-  Clock, Bot, Sparkles, Plus, User, Briefcase, Download
+  Clock, Bot, Sparkles, Plus, Briefcase, Loader2
 } from 'lucide-react';
 
 const statusColors = {
@@ -15,22 +16,22 @@ const statusColors = {
 };
 
 const statusIcons = {
-  draft: FileText,
-  sent: Send,
-  accepted: CheckCircle2,
-  rejected: XCircle,
-  expired: Clock,
-  negotiating: DollarSign,
+  draft: FileText, sent: Send, accepted: CheckCircle2,
+  rejected: XCircle, expired: Clock, negotiating: DollarSign,
 };
 
 export default function Offers() {
+  const [searchParams] = useSearchParams();
+  const prefilledAppId = searchParams.get('applicationId') || '';
+
   const [offers, setOffers] = useState([]);
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
-    applicationId: '',
+    applicationId: prefilledAppId,
     salary: '',
     currency: 'USD',
     startDate: '',
@@ -38,44 +39,39 @@ export default function Offers() {
     content: '',
   });
 
-  useEffect(() => {
+  const fetchOffers = () => {
+    setLoading(true);
     Promise.all([
-      api.getApplications({ status: 'offer', limit: 100 }),
+      api.getOffers(),
       api.getApplications({ limit: 200 }),
     ])
-      .then(([offerData, allApps]) => {
-        // Create offer objects from applications in "offer" status
-        const offerApps = offerData.applications.map(app => ({
-          id: app.id,
-          applicationId: app.id,
-          candidate: app.Candidate,
-          job: app.Job,
-          status: 'draft',
-          salary: app.Job?.salaryMax || 0,
-          currency: 'USD',
-          startDate: null,
-          createdAt: app.updatedAt,
-          Application: app,
-        }));
-        setOffers(offerApps);
-        setApplications(allApps.applications);
+      .then(([offerData, appData]) => {
+        setOffers(offerData.offers);
+        setApplications(appData.applications);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { fetchOffers(); }, []);
+
+  // Auto-open form if navigated from Pipeline with applicationId
+  useEffect(() => {
+    if (prefilledAppId) {
+      setForm(f => ({ ...f, applicationId: prefilledAppId }));
+      setShowForm(true);
+    }
+  }, [prefilledAppId]);
 
   const handleGenerateOffer = async () => {
     if (!form.applicationId) return;
     setGenerating(true);
     try {
-      const app = applications.find(a => a.id === form.applicationId);
-      if (app) {
-        const emailData = await api.generateEmail(form.applicationId, { type: 'offer' });
-        setForm(f => ({
-          ...f,
-          content: `${emailData.email.subject}\n\n${emailData.email.body}`,
-        }));
-      }
+      const emailData = await api.generateEmail(form.applicationId, { type: 'offer' });
+      setForm(f => ({
+        ...f,
+        content: `${emailData.email.subject}\n\n${emailData.email.body}`,
+      }));
     } catch (err) {
       alert(err.message);
     } finally {
@@ -83,26 +79,34 @@ export default function Offers() {
     }
   };
 
-  const handleMoveToOffer = async (appId) => {
+  const handleCreate = async () => {
+    if (!form.applicationId) { alert('Please select an application.'); return; }
+    setSubmitting(true);
     try {
-      await api.updateApplicationStatus(appId, { status: 'offer' });
-      // Refresh
-      const data = await api.getApplications({ status: 'offer', limit: 100 });
-      const offerApps = data.applications.map(app => ({
-        id: app.id, applicationId: app.id, candidate: app.Candidate, job: app.Job,
-        status: 'draft', salary: app.Job?.salaryMax || 0, currency: 'USD',
-        startDate: null, createdAt: app.updatedAt, Application: app,
-      }));
-      setOffers(offerApps);
+      await api.createOffer(form);
+      setShowForm(false);
+      setForm({ applicationId: '', salary: '', currency: 'USD', startDate: '', benefits: '', content: '' });
+      fetchOffers();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleStatusUpdate = async (offerId, status) => {
+    try {
+      await api.updateOffer(offerId, { status });
+      fetchOffers();
     } catch (err) {
       alert(err.message);
     }
   };
 
-  const handleAccept = async (appId) => {
+  const handleDelete = async (offerId) => {
     try {
-      await api.updateApplicationStatus(appId, { status: 'hired' });
-      setOffers(prev => prev.filter(o => o.id !== appId));
+      await api.deleteOffer(offerId);
+      setOffers(prev => prev.filter(o => o.id !== offerId));
     } catch (err) {
       alert(err.message);
     }
@@ -116,12 +120,19 @@ export default function Offers() {
     );
   }
 
+  const acceptedCount = offers.filter(o => o.status === 'accepted').length;
+  const sentCount = offers.filter(o => o.status === 'sent').length;
+  const pendingCount = offers.filter(o => ['draft', 'sent', 'negotiating'].includes(o.status)).length;
+  const avgSalary = offers.filter(o => o.salary).length > 0
+    ? Math.round(offers.filter(o => o.salary).reduce((acc, o) => acc + o.salary, 0) / offers.filter(o => o.salary).length / 1000)
+    : 0;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Offer Management</h1>
-          <p className="text-gray-500 text-sm mt-1">{offers.length} active offers</p>
+          <p className="text-gray-500 text-sm mt-1">{offers.length} total offers</p>
         </div>
         <button onClick={() => setShowForm(!showForm)} className="btn-primary flex items-center gap-2">
           <Plus className="w-4 h-4" /> Create Offer
@@ -131,37 +142,40 @@ export default function Offers() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="card">
-          <div className="flex items-center gap-2 text-sm text-gray-500 mb-1"><FileText className="w-4 h-4" /> Pending Offers</div>
-          <div className="text-3xl font-bold text-gray-900">{offers.length}</div>
+          <div className="flex items-center gap-2 text-sm text-gray-500 mb-1"><FileText className="w-4 h-4" /> Pending</div>
+          <div className="text-3xl font-bold text-gray-900">{pendingCount}</div>
         </div>
         <div className="card">
           <div className="flex items-center gap-2 text-sm text-gray-500 mb-1"><Send className="w-4 h-4" /> Sent</div>
-          <div className="text-3xl font-bold text-blue-600">{offers.filter(o => o.status === 'sent').length}</div>
+          <div className="text-3xl font-bold text-blue-600">{sentCount}</div>
         </div>
         <div className="card">
           <div className="flex items-center gap-2 text-sm text-gray-500 mb-1"><CheckCircle2 className="w-4 h-4" /> Accepted</div>
-          <div className="text-3xl font-bold text-green-600">0</div>
+          <div className="text-3xl font-bold text-green-600">{acceptedCount}</div>
         </div>
         <div className="card">
           <div className="flex items-center gap-2 text-sm text-gray-500 mb-1"><DollarSign className="w-4 h-4" /> Avg Salary</div>
-          <div className="text-3xl font-bold text-primary-600">
-            ${offers.length > 0 ? Math.round(offers.reduce((acc, o) => acc + (o.salary || 0), 0) / offers.length / 1000) : 0}k
-          </div>
+          <div className="text-3xl font-bold text-primary-600">${avgSalary}k</div>
         </div>
       </div>
 
       {/* Create Form */}
       {showForm && (
-        <div className="card space-y-4">
+        <div className="card space-y-4 border-2 border-primary-100">
           <h2 className="text-lg font-semibold">Create New Offer</h2>
           <div className="grid md:grid-cols-2 gap-4">
             <div>
               <label className="label">Application *</label>
               <select className="input" value={form.applicationId} onChange={e => setForm({...form, applicationId: e.target.value})}>
                 <option value="">Select candidate...</option>
-                {applications.filter(a => ['shortlisted', 'interview', 'technical', 'offer'].includes(a.status)).map(a => (
-                  <option key={a.id} value={a.id}>{a.Candidate?.firstName} {a.Candidate?.lastName} - {a.Job?.title}</option>
-                ))}
+                {applications
+                  .filter(a => ['screening', 'shortlisted', 'interview', 'technical', 'offer'].includes(a.status))
+                  .map(a => (
+                    <option key={a.id} value={a.id}>
+                      {a.Candidate?.firstName} {a.Candidate?.lastName} — {a.Job?.title} ({a.status})
+                    </option>
+                  ))
+                }
               </select>
             </div>
             <div>
@@ -194,7 +208,10 @@ export default function Offers() {
             <textarea className="input h-40" value={form.content} onChange={e => setForm({...form, content: e.target.value})} placeholder="Offer letter content..." />
           </div>
           <div className="flex gap-3">
-            <button onClick={() => { if (form.applicationId) handleMoveToOffer(form.applicationId); setShowForm(false); }} className="btn-primary">Create Offer</button>
+            <button onClick={handleCreate} disabled={submitting} className="btn-primary flex items-center gap-2">
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+              {submitting ? 'Saving...' : 'Create & Save Offer'}
+            </button>
             <button onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
           </div>
         </div>
@@ -204,47 +221,73 @@ export default function Offers() {
       {offers.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
           <FileText className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-          <p>No active offers. Move candidates to "Offer" stage to create offers.</p>
+          <p>No offers yet. Create an offer or move candidates to "Offer" stage.</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {offers.map(offer => (
-            <div key={offer.id} className="card hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center justify-center w-12 h-12 bg-amber-100 text-amber-700 rounded-full">
-                    <DollarSign className="w-6 h-6" />
+          {offers.map(offer => {
+            const StatusIcon = statusIcons[offer.status] || FileText;
+            const candidate = offer.Application?.Candidate;
+            const job = offer.Application?.Job;
+            return (
+              <div key={offer.id} className="card hover:shadow-md transition-shadow">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center justify-center w-12 h-12 bg-amber-100 text-amber-700 rounded-full flex-shrink-0">
+                      <DollarSign className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-semibold text-gray-900">
+                          {candidate?.firstName} {candidate?.lastName}
+                        </h3>
+                        <span className={`badge ${statusColors[offer.status] || 'bg-gray-100 text-gray-700'} capitalize`}>
+                          <StatusIcon className="w-3 h-3 mr-1 inline" />{offer.status}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 text-sm text-gray-500 mt-1 flex-wrap">
+                        <span className="flex items-center gap-1"><Briefcase className="w-3.5 h-3.5" />{job?.title}</span>
+                        {offer.salary && <span className="flex items-center gap-1"><DollarSign className="w-3.5 h-3.5" />{offer.currency} {(offer.salary / 1000).toFixed(0)}k/yr</span>}
+                        {offer.startDate && <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />Start: {new Date(offer.startDate).toLocaleDateString()}</span>}
+                        <span className="flex items-center gap-1 text-gray-400"><Clock className="w-3.5 h-3.5" />Created {new Date(offer.createdAt).toLocaleDateString()}</span>
+                      </div>
+                      {offer.benefits && (
+                        <p className="text-xs text-gray-400 mt-1 truncate max-w-sm">{offer.benefits}</p>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-gray-900">
-                        {offer.candidate?.firstName} {offer.candidate?.lastName}
-                      </h3>
-                      <span className="badge bg-amber-100 text-amber-700">Offer Pending</span>
-                    </div>
-                    <div className="flex items-center gap-3 text-sm text-gray-500 mt-1">
-                      <span className="flex items-center gap-1"><Briefcase className="w-3.5 h-3.5" />{offer.job?.title}</span>
-                      <span className="flex items-center gap-1"><DollarSign className="w-3.5 h-3.5" />${(offer.salary / 1000).toFixed(0)}k/yr</span>
-                      <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />{new Date(offer.createdAt).toLocaleDateString()}</span>
-                    </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {offer.status === 'draft' && (
+                      <button onClick={() => handleStatusUpdate(offer.id, 'sent')} className="btn-secondary text-xs px-2.5 py-1 flex items-center gap-1">
+                        <Send className="w-3 h-3" /> Send
+                      </button>
+                    )}
+                    {['draft', 'sent', 'negotiating'].includes(offer.status) && (
+                      <>
+                        <button onClick={() => handleStatusUpdate(offer.id, 'accepted')} className="btn-primary text-xs px-2.5 py-1 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" /> Accept
+                        </button>
+                        <button onClick={() => handleStatusUpdate(offer.id, 'rejected')} className="text-xs px-2.5 py-1 text-red-600 hover:bg-red-50 rounded-lg border border-red-200 flex items-center gap-1">
+                          <XCircle className="w-3 h-3" /> Decline
+                        </button>
+                      </>
+                    )}
+                    <button onClick={() => handleDelete(offer.id)} className="text-xs px-2 py-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Delete offer">
+                      ✕
+                    </button>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => handleAccept(offer.id)} className="btn-primary text-sm flex items-center gap-1">
-                    <CheckCircle2 className="w-4 h-4" /> Mark Hired
-                  </button>
-                  <button onClick={() => {
-                    api.updateApplicationStatus(offer.id, { status: 'rejected' });
-                    setOffers(prev => prev.filter(o => o.id !== offer.id));
-                  }} className="btn-secondary text-sm text-red-600 border-red-200 hover:bg-red-50">
-                    <XCircle className="w-4 h-4" />
-                  </button>
-                </div>
+                {offer.content && (
+                  <div className="mt-3 pt-3 border-t border-gray-100">
+                    <p className="text-xs text-gray-500 line-clamp-2">{offer.content}</p>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
+

@@ -11,7 +11,7 @@ const seed = async () => {
     const admin = await User.create({
       firstName: 'Sarah',
       lastName: 'Johnson',
-      email: 'admin@ats.com',
+      email: 'admin@ciglobalsolutions.com',
       password: 'password123',
       role: 'admin',
       department: 'Human Resources',
@@ -20,7 +20,7 @@ const seed = async () => {
     const recruiter = await User.create({
       firstName: 'Mike',
       lastName: 'Chen',
-      email: 'recruiter@ats.com',
+      email: 'recruiter@ciglobalsolutions.com',
       password: 'password123',
       role: 'recruiter',
       department: 'Talent Acquisition',
@@ -29,7 +29,7 @@ const seed = async () => {
     const hiringManager = await User.create({
       firstName: 'Emily',
       lastName: 'Davis',
-      email: 'manager@ats.com',
+      email: 'manager@ciglobalsolutions.com',
       password: 'password123',
       role: 'hiring_manager',
       department: 'Engineering',
@@ -351,9 +351,9 @@ const seed = async () => {
     console.log('Interviews created.');
     console.log('\n✅ Database seeded successfully!');
     console.log('\nTest accounts:');
-    console.log('  Admin:          admin@ats.com / password123');
-    console.log('  Recruiter:      recruiter@ats.com / password123');
-    console.log('  Hiring Manager: manager@ats.com / password123');
+    console.log('  Admin:          admin@ciglobalsolutions.com / password123');
+    console.log('  Recruiter:      recruiter@ciglobalsolutions.com / password123');
+    console.log('  Hiring Manager: manager@ciglobalsolutions.com / password123');
 
     process.exit(0);
   } catch (error) {

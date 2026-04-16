@@ -16,6 +16,13 @@ export default function CandidateDetail() {
         setCandidate(data.candidate);
         if (data.candidate.aiSummary) {
           try { setAiSummary(JSON.parse(data.candidate.aiSummary)); } catch {}
+        } else if (data.candidate.resumeText) {
+          // Auto-generate summary if resume text exists but no summary yet
+          setAiLoading(true);
+          api.generateCandidateSummary(data.candidate.id)
+            .then(d => setAiSummary(d.summary))
+            .catch(() => {})
+            .finally(() => setAiLoading(false));
         }
       })
       .catch(console.error)

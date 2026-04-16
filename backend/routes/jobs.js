@@ -22,6 +22,11 @@ router.get('/', authenticate, async (req, res) => {
       ];
     }
 
+    // Hiring managers only see their own assigned jobs
+    if (req.user.role === 'hiring_manager') {
+      where.hiringManagerId = req.user.id;
+    }
+
     const offset = (parseInt(page) - 1) * parseInt(limit);
     const { rows: jobs, count: total } = await Job.findAndCountAll({
       where,
@@ -43,7 +48,12 @@ router.get('/:id', authenticate, async (req, res) => {
     const job = await Job.findByPk(req.params.id, {
       include: [
         { model: User, as: 'hiringManager', attributes: ['id', 'firstName', 'lastName', 'email'] },
-        { model: Application },
+        {
+          model: Application,
+          include: [
+            { model: require('../models').Candidate, attributes: ['id', 'firstName', 'lastName', 'email', 'currentTitle'] },
+          ],
+        },
       ],
     });
     if (!job) return res.status(404).json({ error: 'Job not found' });

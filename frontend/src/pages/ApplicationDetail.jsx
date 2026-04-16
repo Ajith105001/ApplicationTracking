@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import api from '../api';
 import {
   ArrowLeft, Bot, Sparkles, Star, Mail, CheckCircle2, XCircle,
-  ThumbsUp, ThumbsDown, MessageSquare, Send
+  ThumbsUp, ThumbsDown, MessageSquare, Send, Copy, Check, RefreshCw, Wand2
 } from 'lucide-react';
 
 const statusColors = {
@@ -27,13 +27,27 @@ export default function ApplicationDetail() {
   const [aiScreening, setAiScreening] = useState(false);
   const [emailGen, setEmailGen] = useState(false);
   const [email, setEmail] = useState(null);
+  const [emailType, setEmailType] = useState(null);
+  const [editSubject, setEditSubject] = useState('');
+  const [editBody, setEditBody] = useState('');
+  const [copied, setCopied] = useState(false);
   const [notes, setNotes] = useState('');
+  const [remarksLoading, setRemarksLoading] = useState(false);
+  const [remarksSaved, setRemarksSaved] = useState(false);
 
   useEffect(() => {
     api.getApplication(id)
       .then(data => {
         setApp(data.application);
         setNotes(data.application.recruiterNotes || '');
+        // Auto AI screen if no score yet and candidate has resume text
+        if (!data.application.aiScore && data.application.Candidate?.resumeText) {
+          setAiScreening(true);
+          api.screenApplication(id)
+            .then(d => setApp(d.application))
+            .catch(() => {})
+            .finally(() => setAiScreening(false));
+        }
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -43,6 +57,10 @@ export default function ApplicationDetail() {
     try {
       const { application } = await api.updateApplicationStatus(id, { status, recruiterNotes: notes });
       setApp(application);
+      // Auto-generate AI remark on key status transitions if no notes written yet
+      if (!notes.trim() && ['shortlisted', 'interview', 'offer', 'rejected', 'hired'].includes(status)) {
+        handleGenerateRemarks(true);
+      }
     } catch (err) {
       alert(err.message);
     }
@@ -61,10 +79,14 @@ export default function ApplicationDetail() {
   };
 
   const handleGenerateEmail = async (type) => {
+    setEmailType(type);
     setEmailGen(true);
+    setEmail(null);
     try {
       const data = await api.generateEmail(id, { type });
       setEmail(data.email);
+      setEditSubject(data.email.subject || '');
+      setEditBody(data.email.body || '');
     } catch (err) {
       alert(err.message);
     } finally {
@@ -72,11 +94,38 @@ export default function ApplicationDetail() {
     }
   };
 
+  const handleCopyEmail = () => {
+    const fullText = `Subject: ${editSubject}\n\n${editBody}`;
+    navigator.clipboard.writeText(fullText).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const handleSendEmail = () => {
+    const mailto = `mailto:${app.Candidate?.email}?subject=${encodeURIComponent(editSubject)}&body=${encodeURIComponent(editBody)}`;
+    window.open(mailto, '_blank');
+  };
+
   const handleSaveNotes = async () => {
     try {
       await api.updateApplicationStatus(id, { status: app.status, recruiterNotes: notes });
+      setRemarksSaved(true);
+      setTimeout(() => setRemarksSaved(false), 2000);
     } catch (err) {
       alert(err.message);
+    }
+  };
+
+  const handleGenerateRemarks = async (silent = false) => {
+    setRemarksLoading(true);
+    try {
+      const data = await api.generateRemarks(id);
+      setNotes(data.remarks || '');
+    } catch (err) {
+      if (!silent) alert(err.message);
+    } finally {
+      setRemarksLoading(false);
     }
   };
 
@@ -201,18 +250,87 @@ export default function ApplicationDetail() {
             <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2 mb-4">
               <Mail className="w-5 h-5 text-primary-600" /> Email Generator
             </h2>
+
+            {/* Type selector */}
             <div className="flex flex-wrap gap-2 mb-4">
-              <button onClick={() => handleGenerateEmail('rejection')} disabled={emailGen} className="btn-secondary text-sm">Rejection Email</button>
-              <button onClick={() => handleGenerateEmail('offer')} disabled={emailGen} className="btn-secondary text-sm">Offer Email</button>
-              <button onClick={() => handleGenerateEmail('interview invitation')} disabled={emailGen} className="btn-secondary text-sm">Interview Invite</button>
-              <button onClick={() => handleGenerateEmail('follow-up')} disabled={emailGen} className="btn-secondary text-sm">Follow-up</button>
+              {[
+                { key: 'rejection', label: 'Rejection Email', color: 'red' },
+                { key: 'offer', label: 'Offer Email', color: 'green' },
+                { key: 'interview invitation', label: 'Interview Invite', color: 'purple' },
+                { key: 'follow-up', label: 'Follow-up', color: 'blue' },
+              ].map(({ key, label, color }) => (
+                <button
+                  key={key}
+                  onClick={() => handleGenerateEmail(key)}
+                  disabled={emailGen}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors flex items-center gap-1.5
+                    ${emailType === key && !emailGen
+                      ? color === 'red' ? 'bg-red-600 text-white border-red-600'
+                      : color === 'green' ? 'bg-green-600 text-white border-green-600'
+                      : color === 'purple' ? 'bg-purple-600 text-white border-purple-600'
+                      : 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                    } disabled:opacity-50`}
+                >
+                  {emailGen && emailType === key
+                    ? <div className="animate-spin h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full" />
+                    : emailType === key && email
+                    ? <Check className="w-3.5 h-3.5" />
+                    : <Mail className="w-3.5 h-3.5" />
+                  }
+                  {label}
+                </button>
+              ))}
             </div>
-            {emailGen && <div className="flex items-center gap-2 text-sm text-gray-500"><div className="animate-spin h-4 w-4 border-2 border-primary-500 border-t-transparent rounded-full" />Generating email...</div>}
-            {email && (
-              <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                <p className="text-sm font-medium text-gray-700">Subject: {email.subject}</p>
-                <p className="text-sm text-gray-600 whitespace-pre-line">{email.body}</p>
+
+            {emailGen && (
+              <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
+                <div className="animate-spin h-4 w-4 border-2 border-primary-500 border-t-transparent rounded-full" />
+                Generating personalized email for <strong>{app.Candidate?.firstName}</strong>...
               </div>
+            )}
+
+            {email && !emailGen && (
+              <div className="space-y-3">
+                {/* Subject line */}
+                <div>
+                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Subject</label>
+                  <input
+                    className="input mt-1 text-sm font-medium"
+                    value={editSubject}
+                    onChange={e => setEditSubject(e.target.value)}
+                  />
+                </div>
+
+                {/* Body */}
+                <div>
+                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Body</label>
+                  <textarea
+                    className="input mt-1 text-sm leading-relaxed"
+                    rows={12}
+                    value={editBody}
+                    onChange={e => setEditBody(e.target.value)}
+                  />
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-2 pt-1">
+                  <button onClick={handleCopyEmail} className="btn-secondary text-sm flex items-center gap-1.5">
+                    {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copied ? 'Copied!' : 'Copy'}
+                  </button>
+                  <button onClick={handleSendEmail} className="btn-primary text-sm flex items-center gap-1.5">
+                    <Send className="w-3.5 h-3.5" /> Send via Email Client
+                  </button>
+                  <button onClick={() => handleGenerateEmail(emailType)} className="btn-secondary text-sm flex items-center gap-1.5 ml-auto">
+                    <RefreshCw className="w-3.5 h-3.5" /> Regenerate
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!email && !emailGen && (
+              <p className="text-sm text-gray-400">Select an email type above to auto-generate a personalized email for <strong>{app.Candidate?.firstName}</strong>.</p>
             )}
           </div>
         </div>
@@ -236,17 +354,36 @@ export default function ApplicationDetail() {
 
           {/* Notes */}
           <div className="card">
-            <h3 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
-              <MessageSquare className="w-4 h-4" /> Recruiter Notes
-            </h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                <MessageSquare className="w-4 h-4" /> Recruiter Remarks
+              </h3>
+              <button
+                onClick={() => handleGenerateRemarks(false)}
+                disabled={remarksLoading}
+                title="AI auto-generate remarks from screening data"
+                className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-primary-600 bg-primary-50 hover:bg-primary-100 rounded-lg border border-primary-200 transition-colors disabled:opacity-50"
+              >
+                {remarksLoading
+                  ? <div className="animate-spin h-3 w-3 border-2 border-primary-500 border-t-transparent rounded-full" />
+                  : <Wand2 className="w-3 h-3" />}
+                {remarksLoading ? 'Generating...' : 'AI Suggest'}
+              </button>
+            </div>
+            {!app.aiScore && !notes && (
+              <p className="text-xs text-amber-600 bg-amber-50 rounded px-2 py-1 mb-2">
+                Run AI Screening first for smarter remarks.
+              </p>
+            )}
             <textarea
-              className="input h-32 text-sm"
+              className="input h-28 text-sm"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Add notes about this candidate..."
+              placeholder='Click "AI Suggest" to auto-generate remarks, or type manually...'
             />
-            <button onClick={handleSaveNotes} className="btn-secondary text-sm mt-2 flex items-center gap-1.5">
-              <Send className="w-3.5 h-3.5" /> Save Notes
+            <button onClick={handleSaveNotes} disabled={remarksSaved} className="btn-secondary text-sm mt-2 flex items-center gap-1.5">
+              {remarksSaved ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Send className="w-3.5 h-3.5" />}
+              {remarksSaved ? 'Saved!' : 'Save Remarks'}
             </button>
           </div>
 

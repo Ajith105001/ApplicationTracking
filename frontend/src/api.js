@@ -15,10 +15,14 @@ class ApiClient {
   }
 
   async request(endpoint, options = {}) {
-    const headers = {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    };
+    const headers = {};
+
+    // Don't set Content-Type for FormData — browser sets it with boundary automatically
+    if (!(options.body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json';
+    }
+
+    Object.assign(headers, options.headers);
 
     if (this.token) {
       headers.Authorization = `Bearer ${this.token}`;
@@ -67,6 +71,14 @@ class ApiClient {
     return this.get('/auth/me');
   }
 
+  updateProfile(data) {
+    return this.put('/auth/me', data);
+  }
+
+  updatePassword(data) {
+    return this.put('/auth/me/password', data);
+  }
+
   // Jobs
   getJobs(params = {}) {
     const query = new URLSearchParams(params).toString();
@@ -111,6 +123,23 @@ class ApiClient {
     return this.post(`/candidates/${id}/ai-summary`);
   }
 
+  parseResume(resumeText) {
+    return this.post('/candidates/parse-resume', { resumeText });
+  }
+
+  uploadResume(file) {
+    const formData = new FormData();
+    formData.append('resume', file);
+    return this.request('/candidates/upload-resume', {
+      method: 'POST',
+      body: formData,
+    });
+  }
+
+  matchJobs(candidateData) {
+    return this.post('/candidates/match-jobs', { candidateData });
+  }
+
   // Applications
   getApplications(params = {}) {
     const query = new URLSearchParams(params).toString();
@@ -137,6 +166,10 @@ class ApiClient {
     return this.post(`/applications/${id}/generate-email`, data);
   }
 
+  generateRemarks(id) {
+    return this.post(`/applications/${id}/generate-remarks`);
+  }
+
   // Interviews
   getInterviews(params = {}) {
     const query = new URLSearchParams(params).toString();
@@ -160,8 +193,9 @@ class ApiClient {
   }
 
   // Analytics
-  getDashboard() {
-    return this.get('/analytics/dashboard');
+  getDashboard(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return this.get(`/analytics/dashboard${query ? `?${query}` : ''}`);
   }
 
   getHiringFunnel(jobId) {
@@ -170,6 +204,36 @@ class ApiClient {
 
   getAiInsights() {
     return this.get('/analytics/ai-insights');
+  }
+
+  // User Management (admin only)
+  getUsers() {
+    return this.get('/auth/users');
+  }
+
+  createUser(data) {
+    return this.post('/auth/users', data);
+  }
+
+  updateUser(id, data) {
+    return this.request(`/auth/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+  }
+
+  // Offer Letters
+  getOffers() {
+    return this.get('/offers');
+  }
+
+  createOffer(data) {
+    return this.post('/offers', data);
+  }
+
+  updateOffer(id, data) {
+    return this.put(`/offers/${id}`, data);
+  }
+
+  deleteOffer(id) {
+    return this.delete(`/offers/${id}`);
   }
 }
 

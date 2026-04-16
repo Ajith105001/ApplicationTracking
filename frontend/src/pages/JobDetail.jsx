@@ -113,16 +113,30 @@ export default function JobDetail() {
       {job.Applications && job.Applications.length > 0 && (
         <div className="card">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Applications ({job.Applications.length})</h2>
-          <div className="space-y-2">
+          <div className="grid gap-3">
             {job.Applications.map(app => (
-              <Link key={app.id} to={`/applications/${app.id}`} className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50">
+              <Link key={app.id} to={`/applications/${app.id}`} className="flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 border border-gray-100 hover:border-primary-200 transition-all group">
                 <div className="flex items-center gap-3">
-                  <Briefcase className="w-4 h-4 text-gray-400" />
-                  <span className="text-sm font-medium text-gray-700">Application #{app.id.slice(0,8)}</span>
+                  <div className="w-9 h-9 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                    {app.Candidate?.firstName?.[0]}{app.Candidate?.lastName?.[0]}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 group-hover:text-primary-600">
+                      {app.Candidate?.firstName} {app.Candidate?.lastName}
+                    </p>
+                    {app.Candidate?.currentTitle && (
+                      <p className="text-xs text-gray-500">{app.Candidate.currentTitle}</p>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {app.aiScore && <span className="text-sm font-medium text-primary-600">{app.aiScore}%</span>}
-                  <span className="badge bg-gray-100 text-gray-700 capitalize">{app.status}</span>
+                  {app.aiScore && <span className="text-sm font-bold text-primary-600">{app.aiScore}%</span>}
+                  <span className={`badge capitalize text-xs ${
+                    app.status === 'hired' ? 'bg-green-100 text-green-700' :
+                    app.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                    app.status === 'offer' ? 'bg-amber-100 text-amber-700' :
+                    'bg-gray-100 text-gray-700'
+                  }`}>{app.status}</span>
                 </div>
               </Link>
             ))}

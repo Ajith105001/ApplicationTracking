@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../api';
 import {
   Calendar, Clock, Video, Phone, MapPin, Users, Bot, Sparkles,
-  CheckCircle2, XCircle, Plus
+  CheckCircle2, XCircle, Plus, Star, MessageSquare, Send
 } from 'lucide-react';
 
 const typeIcons = {
@@ -23,6 +24,9 @@ const statusColors = {
 };
 
 export default function Interviews() {
+  const [searchParams] = useSearchParams();
+  const prefilledAppId = searchParams.get('applicationId') || '';
+
   const [interviews, setInterviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [generatingQuestions, setGeneratingQuestions] = useState(null);
@@ -30,8 +34,10 @@ export default function Interviews() {
   const [statusFilter, setStatusFilter] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [applications, setApplications] = useState([]);
+  const [feedbackStates, setFeedbackStates] = useState({}); // { [interviewId]: { open, feedback, rating, notes } }
+  const [savingFeedback, setSavingFeedback] = useState(null);
   const [form, setForm] = useState({
-    applicationId: '', type: 'video', scheduledAt: '',
+    applicationId: prefilledAppId, type: 'video', scheduledAt: '',
     duration: 60, meetingLink: '', location: ''
   });
 
@@ -46,6 +52,17 @@ export default function Interviews() {
   };
 
   useEffect(() => { fetchInterviews(); }, [statusFilter]);
+
+  // Auto-open schedule form if navigated from Pipeline with applicationId
+  useEffect(() => {
+    if (prefilledAppId) {
+      api.getApplications({ limit: 100 }).then(data => {
+        setApplications(data.applications);
+        setForm(f => ({ ...f, applicationId: prefilledAppId }));
+        setShowForm(true);
+      }).catch(console.error);
+    }
+  }, [prefilledAppId]);
 
   const handleGenerateQuestions = async (intId) => {
     setGeneratingQuestions(intId);
@@ -68,13 +85,48 @@ export default function Interviews() {
     }
   };
 
+  const openFeedback = (intId) => {
+    setFeedbackStates(prev => ({
+      ...prev,
+      [intId]: { open: true, feedback: '', rating: 0, notes: '' },
+    }));
+  };
+
+  const handleSaveFeedback = async (intId) => {
+    const fb = feedbackStates[intId];
+    setSavingFeedback(intId);
+    try {
+      await api.updateInterview(intId, {
+        status: 'completed',
+        feedback: fb.feedback,
+        rating: fb.rating || null,
+        notes: fb.notes,
+      });
+      setFeedbackStates(prev => ({ ...prev, [intId]: { ...prev[intId], open: false } }));
+      fetchInterviews();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSavingFeedback(null);
+    }
+  };
+
   const handleSchedule = async (e) => {
     e.preventDefault();
     try {
-      await api.createInterview(form);
+      const created = await api.createInterview(form);
       setShowForm(false);
       setForm({ applicationId: '', type: 'video', scheduledAt: '', duration: 60, meetingLink: '', location: '' });
       fetchInterviews();
+      // Auto-generate questions for newly scheduled interview
+      if (created?.interview?.id) {
+        setTimeout(async () => {
+          try {
+            const data = await api.generateInterviewQuestions(created.interview.id);
+            setQuestions(q => ({ ...q, [created.interview.id]: data.questions }));
+          } catch {}
+        }, 500);
+      }
     } catch (err) {
       alert(err.message);
     }
@@ -186,7 +238,7 @@ export default function Interviews() {
                   <div className="flex gap-2">
                     {iv.status === 'scheduled' && (
                       <>
-                        <button onClick={() => handleStatusUpdate(iv.id, 'completed')} className="btn-secondary text-xs px-2 py-1 flex items-center gap-1">
+                        <button onClick={() => openFeedback(iv.id)} className="btn-secondary text-xs px-2 py-1 flex items-center gap-1">
                           <CheckCircle2 className="w-3 h-3" /> Complete
                         </button>
                         <button onClick={() => handleStatusUpdate(iv.id, 'cancelled')} className="text-xs px-2 py-1 text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-1">
@@ -196,6 +248,72 @@ export default function Interviews() {
                     )}
                   </div>
                 </div>
+
+                {/* Feedback form for completing interviews */}
+                {feedbackStates[iv.id]?.open && (
+                  <div className="mt-4 pt-4 border-t border-amber-100 bg-amber-50 rounded-xl p-4 space-y-3">
+                    <h4 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+                      <MessageSquare className="w-4 h-4 text-amber-600" /> Interview Feedback
+                    </h4>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-gray-500 mr-1">Rating:</span>
+                      {[1,2,3,4,5].map(star => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => setFeedbackStates(prev => ({ ...prev, [iv.id]: { ...prev[iv.id], rating: star } }))}
+                          className="p-0.5"
+                        >
+                          <Star className={`w-5 h-5 ${(feedbackStates[iv.id]?.rating || 0) >= star ? 'text-amber-500 fill-amber-500' : 'text-gray-300'}`} />
+                        </button>
+                      ))}
+                    </div>
+                    <textarea
+                      className="input text-sm h-20"
+                      placeholder="Feedback on the interview performance..."
+                      value={feedbackStates[iv.id]?.feedback || ''}
+                      onChange={e => setFeedbackStates(prev => ({ ...prev, [iv.id]: { ...prev[iv.id], feedback: e.target.value } }))}
+                    />
+                    <textarea
+                      className="input text-sm h-14"
+                      placeholder="Internal notes..."
+                      value={feedbackStates[iv.id]?.notes || ''}
+                      onChange={e => setFeedbackStates(prev => ({ ...prev, [iv.id]: { ...prev[iv.id], notes: e.target.value } }))}
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleSaveFeedback(iv.id)}
+                        disabled={savingFeedback === iv.id}
+                        className="btn-primary text-sm flex items-center gap-1.5"
+                      >
+                        {savingFeedback === iv.id ? <div className="animate-spin h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full" /> : <Send className="w-3.5 h-3.5" />}
+                        {savingFeedback === iv.id ? 'Saving...' : 'Save & Complete'}
+                      </button>
+                      <button onClick={() => setFeedbackStates(prev => ({ ...prev, [iv.id]: { ...prev[iv.id], open: false } }))} className="btn-secondary text-sm">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Show saved feedback for completed interviews */}
+                {iv.status === 'completed' && (iv.feedback || iv.rating) && !feedbackStates[iv.id]?.open && (
+                  <div className="mt-4 pt-4 border-t border-green-100 bg-green-50 rounded-xl p-4 space-y-2">
+                    <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                      <MessageSquare className="w-4 h-4 text-green-600" /> Interview Feedback
+                    </h4>
+                    {iv.rating && (
+                      <div className="flex items-center gap-1">
+                        {[1,2,3,4,5].map(s => (
+                          <Star key={s} className={`w-4 h-4 ${iv.rating >= s ? 'text-amber-500 fill-amber-500' : 'text-gray-300'}`} />
+                        ))}
+                        <span className="text-xs text-gray-500 ml-1">{iv.rating}/5</span>
+                      </div>
+                    )}
+                    {iv.feedback && <p className="text-sm text-gray-600">{iv.feedback}</p>}
+                    {iv.notes && <p className="text-xs text-gray-400 italic">{iv.notes}</p>}
+                  </div>
+                )}
 
                 {/* AI Questions */}
                 <div className="mt-4 pt-4 border-t border-gray-100">

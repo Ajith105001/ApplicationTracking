@@ -12,7 +12,7 @@ const ROLES = [
   {
     id: 'admin',
     label: 'Admin',
-    email: 'admin@ats.com',
+    email: 'admin@ciglobalsolutions.com',
     icon: Crown,
     gradient: 'from-violet-600 to-indigo-600',
     hoverGlow: 'hover:shadow-violet-200',
@@ -28,7 +28,7 @@ const ROLES = [
   {
     id: 'recruiter',
     label: 'Recruiter',
-    email: 'recruiter@ats.com',
+    email: 'recruiter@ciglobalsolutions.com',
     icon: UserCheck,
     gradient: 'from-blue-600 to-cyan-600',
     hoverGlow: 'hover:shadow-blue-200',
@@ -44,7 +44,7 @@ const ROLES = [
   {
     id: 'manager',
     label: 'Hiring Manager',
-    email: 'manager@ats.com',
+    email: 'manager@ciglobalsolutions.com',
     icon: Settings,
     gradient: 'from-emerald-600 to-teal-600',
     hoverGlow: 'hover:shadow-emerald-200',

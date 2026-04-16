@@ -15,6 +15,7 @@ const candidateRoutes = require('./routes/candidates');
 const applicationRoutes = require('./routes/applications');
 const interviewRoutes = require('./routes/interviews');
 const analyticsRoutes = require('./routes/analytics');
+const offerRoutes = require('./routes/offers');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -50,6 +51,7 @@ app.use('/api/candidates', candidateRoutes);
 app.use('/api/applications', applicationRoutes);
 app.use('/api/interviews', interviewRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/offers', offerRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -75,6 +77,21 @@ const start = async () => {
   try {
     await sequelize.sync();
     console.log('📦 Database connected & synced.');
+
+    // Ensure demo accounts always exist
+    const { User } = require('./models');
+    const DEMO_USERS = [
+      { firstName: 'Sarah', lastName: 'Johnson', email: 'admin@ciglobalsolutions.com', password: 'password123', role: 'admin', department: 'Human Resources' },
+      { firstName: 'Emily', lastName: 'Davis', email: 'manager@ciglobalsolutions.com', password: 'password123', role: 'hiring_manager', department: 'Engineering' },
+      { firstName: 'Mike', lastName: 'Chen', email: 'recruiter@ciglobalsolutions.com', password: 'password123', role: 'recruiter', department: 'Talent Acquisition' },
+    ];
+    for (const u of DEMO_USERS) {
+      const existing = await User.findOne({ where: { email: u.email } });
+      if (!existing) {
+        await User.create(u);
+        console.log(`👤 Created demo user: ${u.email} (${u.role})`);
+      }
+    }
 
     app.listen(PORT, () => {
       console.log(`🚀 ATS Server running on http://localhost:${PORT}`);

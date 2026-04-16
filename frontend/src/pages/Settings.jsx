@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import api from '../api';
 import {
   User, Bell, Shield, Palette, Globe, Database,
   Save, Moon, Sun, Monitor, Check, ChevronRight,
@@ -15,9 +16,11 @@ const settingsSections = [
 ];
 
 export default function Settings() {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
+  // setUser allows updating UI immediately after profile save (exposed by AuthContext)
   const [activeSection, setActiveSection] = useState('profile');
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [theme, setTheme] = useState('light');
   const [notifications, setNotifications] = useState({
@@ -35,10 +38,53 @@ export default function Settings() {
     email: user?.email || '',
     department: user?.department || '',
   });
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [pwSaved, setPwSaved] = useState(false);
+  const [pwError, setPwError] = useState('');
 
-  const handleSave = () => {
+  const handleSaveProfile = async () => {
+    setSaveError('');
+    try {
+      const { user: updated } = await api.updateProfile(profile);
+      if (setUser) setUser(updated);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err) {
+      setSaveError(err.message);
+    }
+  };
+
+  const handleSaveNotifications = () => {
+    // Notification prefs stored locally (no backend table for prefs yet)
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleUpdatePassword = async () => {
+    setPwError('');
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPwError('New passwords do not match.');
+      return;
+    }
+    if (passwordForm.newPassword.length < 8) {
+      setPwError('New password must be at least 8 characters.');
+      return;
+    }
+    try {
+      await api.updatePassword({
+        currentPassword: passwordForm.currentPassword,
+        newPassword: passwordForm.newPassword,
+      });
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setPwSaved(true);
+      setTimeout(() => setPwSaved(false), 2500);
+    } catch (err) {
+      setPwError(err.message);
+    }
   };
 
   return (
@@ -82,7 +128,6 @@ export default function Settings() {
                 <div>
                   <p className="font-medium text-gray-900">{user?.firstName} {user?.lastName}</p>
                   <p className="text-sm text-gray-500 capitalize">{user?.role?.replace('_', ' ')}</p>
-                  <button className="text-sm text-primary-600 hover:underline mt-1">Change avatar</button>
                 </div>
               </div>
               <div className="grid md:grid-cols-2 gap-4">
@@ -103,7 +148,8 @@ export default function Settings() {
                   <input className="input" value={profile.department} onChange={e => setProfile({...profile, department: e.target.value})} />
                 </div>
               </div>
-              <button onClick={handleSave} className="btn-primary mt-6 flex items-center gap-2">
+              {saveError && <p className="text-sm text-red-600 mt-3">{saveError}</p>}
+              <button onClick={handleSaveProfile} className="btn-primary mt-6 flex items-center gap-2">
                 {saved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
                 {saved ? 'Saved!' : 'Save Changes'}
               </button>
@@ -113,7 +159,6 @@ export default function Settings() {
           {activeSection === 'notifications' && (
             <div className="card">
               <h2 className="text-lg font-semibold text-gray-900 mb-6">Notification Preferences</h2>
-
               <div className="space-y-6">
                 <div>
                   <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2"><Mail className="w-4 h-4" /> Email Notifications</h3>
@@ -139,7 +184,6 @@ export default function Settings() {
                     ))}
                   </div>
                 </div>
-
                 <div>
                   <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2"><Bell className="w-4 h-4" /> Push Notifications</h3>
                   <div className="space-y-3">
@@ -164,8 +208,7 @@ export default function Settings() {
                   </div>
                 </div>
               </div>
-
-              <button onClick={handleSave} className="btn-primary mt-6 flex items-center gap-2">
+              <button onClick={handleSaveNotifications} className="btn-primary mt-6 flex items-center gap-2">
                 {saved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
                 {saved ? 'Saved!' : 'Save Preferences'}
               </button>
@@ -198,16 +241,6 @@ export default function Settings() {
                   ))}
                 </div>
               </div>
-
-              <div className="mt-6">
-                <h3 className="text-sm font-medium text-gray-700 mb-3">Accent Color</h3>
-                <div className="flex gap-3">
-                  {['bg-indigo-500', 'bg-blue-500', 'bg-purple-500', 'bg-pink-500', 'bg-emerald-500', 'bg-amber-500'].map(color => (
-                    <button key={color} className={`w-8 h-8 rounded-full ${color} ring-2 ring-offset-2 ${color === 'bg-indigo-500' ? 'ring-indigo-500' : 'ring-transparent'} hover:scale-110 transition-transform`} />
-                  ))}
-                </div>
-              </div>
-
               <div className="mt-6">
                 <h3 className="text-sm font-medium text-gray-700 mb-3">Density</h3>
                 <div className="flex gap-3">
@@ -226,7 +259,13 @@ export default function Settings() {
                 <div>
                   <label className="label">Current Password</label>
                   <div className="relative">
-                    <input type={showPassword ? 'text' : 'password'} className="input pr-10" placeholder="Enter current password" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      className="input pr-10"
+                      placeholder="Enter current password"
+                      value={passwordForm.currentPassword}
+                      onChange={e => setPasswordForm({...passwordForm, currentPassword: e.target.value})}
+                    />
                     <button onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -234,15 +273,30 @@ export default function Settings() {
                 </div>
                 <div>
                   <label className="label">New Password</label>
-                  <input type="password" className="input" placeholder="Enter new password" />
+                  <input
+                    type="password"
+                    className="input"
+                    placeholder="Enter new password (min 8 chars)"
+                    value={passwordForm.newPassword}
+                    onChange={e => setPasswordForm({...passwordForm, newPassword: e.target.value})}
+                  />
                 </div>
                 <div>
                   <label className="label">Confirm New Password</label>
-                  <input type="password" className="input" placeholder="Confirm new password" />
+                  <input
+                    type="password"
+                    className="input"
+                    placeholder="Confirm new password"
+                    value={passwordForm.confirmPassword}
+                    onChange={e => setPasswordForm({...passwordForm, confirmPassword: e.target.value})}
+                  />
                 </div>
               </div>
-              <button onClick={handleSave} className="btn-primary mt-6 flex items-center gap-2">
-                <Lock className="w-4 h-4" /> Update Password
+              {pwError && <p className="text-sm text-red-600 mt-3">{pwError}</p>}
+              {pwSaved && <p className="text-sm text-green-600 mt-3">Password updated successfully!</p>}
+              <button onClick={handleUpdatePassword} className="btn-primary mt-6 flex items-center gap-2">
+                {pwSaved ? <Check className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                {pwSaved ? 'Updated!' : 'Update Password'}
               </button>
 
               <div className="mt-8 pt-6 border-t border-gray-200">
@@ -250,20 +304,9 @@ export default function Settings() {
                 <div className="p-3 bg-gray-50 rounded-lg flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-900">Current Session</p>
-                    <p className="text-xs text-gray-500">Windows • Chrome • {new Date().toLocaleDateString()}</p>
+                    <p className="text-xs text-gray-500">Windows · Chrome · {new Date().toLocaleDateString()}</p>
                   </div>
                   <span className="badge bg-green-100 text-green-700">Active</span>
-                </div>
-              </div>
-
-              <div className="mt-6 pt-6 border-t border-gray-200">
-                <h3 className="text-sm font-semibold text-gray-900 mb-3">Two-Factor Authentication</h3>
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">2FA is disabled</p>
-                    <p className="text-xs text-gray-500">Add extra security to your account</p>
-                  </div>
-                  <button className="btn-secondary text-sm">Enable 2FA</button>
                 </div>
               </div>
             </div>
@@ -275,7 +318,7 @@ export default function Settings() {
               <div className="space-y-3">
                 {[
                   { label: 'Version', value: '1.0.0' },
-                  { label: 'Database', value: 'SQLite (Development)' },
+                  { label: 'Database', value: 'SQLite (Local)' },
                   { label: 'AI Engine', value: 'Claude claude-sonnet-4-20250514' },
                   { label: 'API Endpoint', value: 'http://localhost:3001/api' },
                   { label: 'Frontend', value: 'React 18 + Vite + Tailwind CSS' },
@@ -287,14 +330,12 @@ export default function Settings() {
                   </div>
                 ))}
               </div>
-
               <div className="mt-6">
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">Data Management</h3>
                 <div className="flex gap-3">
-                  <button className="btn-secondary text-sm flex items-center gap-1">
+                  <button className="btn-secondary text-sm flex items-center gap-2">
                     <Database className="w-4 h-4" /> Export Data
                   </button>
-                  <button className="btn-danger text-sm">Clear Cache</button>
                 </div>
               </div>
             </div>
@@ -304,3 +345,4 @@ export default function Settings() {
     </div>
   );
 }
+
